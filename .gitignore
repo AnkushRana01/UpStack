@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+*.log
+upstack-backend/storage/uploads/*
+!upstack-backend/storage/uploads/.gitkeep
