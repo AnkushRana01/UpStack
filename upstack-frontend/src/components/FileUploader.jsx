@@ -40,15 +40,21 @@ export default function FileUploader({ folder, onUploaded }) {
     }
   }, [folder, onUploaded]);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop: uploadFiles, multiple: true });
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop: uploadFiles,
+    multiple: true,
+    disabled: uploading
+  });
 
   return (
     <section
       {...getRootProps()}
-      className={`relative cursor-pointer rounded-2xl border border-dashed p-8 transition-all duration-350 shadow-sm ${
-        isDragActive
-          ? 'border-cyan-500 bg-cyan-50/40 dark:bg-cyan-950/20 scale-[0.99] shadow-inner animate-glow'
-          : 'border-slate-250 bg-white hover:border-cyan-450 dark:border-slate-800 dark:bg-slate-900/50 hover:shadow-md'
+      className={`relative rounded-2xl border border-dashed p-8 transition-all duration-350 shadow-sm ${
+        uploading
+          ? 'cursor-not-allowed border-slate-300 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-900/30 opacity-80 pointer-events-none'
+          : isDragActive
+          ? 'cursor-pointer border-cyan-500 bg-cyan-50/40 dark:bg-cyan-950/20 scale-[0.99] shadow-inner animate-glow'
+          : 'cursor-pointer border-slate-250 bg-white hover:border-cyan-450 dark:border-slate-800 dark:bg-slate-900/50 hover:shadow-md'
       }`}
     >
       <input {...getInputProps()} />

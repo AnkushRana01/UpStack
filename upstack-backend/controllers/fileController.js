@@ -1,6 +1,7 @@
 import path from 'path';
 import { nanoid } from 'nanoid';
 import { File } from '../models/File.js';
+import { SharedFile } from '../models/SharedFile.js';
 import { User } from '../models/User.js';
 import { logActivity } from '../services/activityService.js';
 import { decryptBuffer, encryptBuffer } from '../services/encryptionService.js';
@@ -132,17 +133,53 @@ export async function uploadFile(req, res, next) {
 
 export async function downloadFile(req, res, next) {
   try {
-    const file = await File.findOne({ _id: req.params.id, owner: req.user._id });
+    const file = await File.findById(req.params.id);
 
     if (!file || file.isFolder) {
       res.status(404);
       throw new Error('File not found');
     }
 
-    const encrypted = await readObject(file.storageKey);
-    const decrypted = decryptBuffer(encrypted, file.iv, file.authTag);
+    // Check download authorization:
+    // 1. Is the requesting user the owner of the file?
+    const isOwner = file.owner.toString() === req.user._id.toString();
 
-    await logActivity({ actor: req.user._id, action: 'FILE_DOWNLOADED', targetType: 'file', targetId: file._id, ipAddress: req.ip });
+    // 2. Has the file been shared with the requesting user with 'download' permission?
+    let isAuthorizedRecipient = false;
+    if (!isOwner) {
+      const share = await SharedFile.findOne({
+        file: file._id,
+        sharedWith: req.user._id,
+        permission: 'download'
+      });
+      if (share) {
+        isAuthorizedRecipient = true;
+      }
+    }
+
+    if (!isOwner && !isAuthorizedRecipient) {
+      res.status(403);
+      throw new Error("You don't have permission to download this file.");
+    }
+
+    if (!file.storageKey) {
+      res.status(404);
+      throw new Error('File storage key not found');
+    }
+
+    const encrypted = await readObject(file.storageKey);
+    const decrypted = (file.iv && file.authTag)
+      ? decryptBuffer(encrypted, file.iv, file.authTag)
+      : encrypted;
+
+    await logActivity({
+      actor: req.user._id,
+      action: isOwner ? 'FILE_DOWNLOADED' : 'SHARED_FILE_DOWNLOADED',
+      targetType: 'file',
+      targetId: file._id,
+      ipAddress: req.ip
+    });
+
     res.setHeader('Content-Type', file.mimeType);
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.originalName)}"`);
     res.send(decrypted);

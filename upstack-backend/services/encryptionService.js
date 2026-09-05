@@ -23,6 +23,9 @@ export function encryptBuffer(buffer) {
 }
 
 export function decryptBuffer(buffer, iv, authTag) {
+  if (!iv || !authTag) {
+    return buffer;
+  }
   const decipher = crypto.createDecipheriv('aes-256-gcm', getKey(), Buffer.from(iv, 'hex'));
   decipher.setAuthTag(Buffer.from(authTag, 'hex'));
   return Buffer.concat([decipher.update(buffer), decipher.final()]);

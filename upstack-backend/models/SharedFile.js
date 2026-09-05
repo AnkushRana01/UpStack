@@ -5,7 +5,7 @@ const sharedFileSchema = new mongoose.Schema(
     file: { type: mongoose.Schema.Types.ObjectId, ref: 'File', required: true },
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     sharedWith: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-    permission: { type: String, enum: ['view', 'download', 'edit'], default: 'view' },
+    permission: { type: String, enum: ['download', 'view'], default: 'download' },
     token: { type: String, index: true },
     expiresAt: { type: Date },
     isLink: { type: Boolean, default: false }

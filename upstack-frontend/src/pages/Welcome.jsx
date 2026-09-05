@@ -1,4 +1,5 @@
-import { ArrowRight, Cloud, Files, LockKeyhole, Share2, Sparkles, Users } from 'lucide-react';
+import { ArrowRight, Cloud, Files, LockKeyhole, Menu, Share2, Sparkles, Users, X } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import AppFooter from '../components/AppFooter.jsx';
 
@@ -6,8 +7,71 @@ const features = [
   { title: 'File Management', description: 'Organize folders, documents, media, and backups in one polished workspace.', icon: Files },
   { title: 'Team Collaboration', description: 'Share access with teammates while keeping ownership and permissions clear.', icon: Users },
   { title: 'Secure Cloud Storage', description: 'Encrypted storage patterns help protect private files from upload to download.', icon: LockKeyhole },
-  { title: 'Fast Access & Sharing', description: 'Create share links, download quickly, and keep important files within reach.', icon: Share2 }
+  { title: 'Fast Access & Sharing', description: 'Share with users, download quickly, and keep important files within reach.', icon: Share2 }
 ];
+
+function WelcomeNav() {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  return (
+    <nav className="sticky top-0 z-30 border-b border-slate-200/60 bg-white/80 backdrop-blur-xl dark:border-slate-800/60 dark:bg-slate-950/80">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        {/* Brand */}
+        <Link to="/welcome" className="flex items-center gap-2.5 shrink-0">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-600/20">
+            <Cloud size={20} />
+          </span>
+          <span className="text-base font-black tracking-tight text-slate-950">UpStack</span>
+        </Link>
+
+        {/* Desktop CTAs */}
+        <div className="hidden items-center gap-3 sm:flex">
+          <Link
+            to="/login"
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:text-blue-700"
+          >
+            Sign In
+          </Link>
+          <Link
+            to="/register"
+            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-md shadow-blue-600/20 transition hover:-translate-y-0.5 hover:bg-blue-700"
+          >
+            Sign Up
+          </Link>
+        </div>
+
+        {/* Mobile hamburger */}
+        <button
+          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 sm:hidden"
+          onClick={() => setMobileOpen((v) => !v)}
+          aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+        >
+          {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
+      </div>
+
+      {/* Mobile menu */}
+      {mobileOpen && (
+        <div className="border-t border-slate-100 bg-white px-4 py-4 space-y-2 sm:hidden dark:border-slate-800 dark:bg-slate-950">
+          <Link
+            to="/login"
+            onClick={() => setMobileOpen(false)}
+            className="block w-full rounded-xl border border-slate-200 px-4 py-3 text-center text-sm font-bold text-slate-700 hover:bg-slate-50"
+          >
+            Sign In
+          </Link>
+          <Link
+            to="/register"
+            onClick={() => setMobileOpen(false)}
+            className="block w-full rounded-xl bg-blue-600 px-4 py-3 text-center text-sm font-bold text-white hover:bg-blue-700"
+          >
+            Sign Up
+          </Link>
+        </div>
+      )}
+    </nav>
+  );
+}
 
 function CloudIllustration() {
   return (
@@ -56,8 +120,12 @@ function CloudIllustration() {
 export default function Welcome() {
   return (
     <main className="min-h-screen bg-white text-slate-950">
+      {/* Navbar */}
+      <WelcomeNav />
+
+      {/* Hero */}
       <section className="overflow-hidden bg-gradient-to-br from-blue-50 via-white to-cyan-50">
-        <div className="mx-auto grid min-h-[86vh] max-w-7xl items-center gap-12 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_0.95fr] lg:px-8">
+        <div className="mx-auto grid min-h-[84vh] max-w-7xl items-center gap-12 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_0.95fr] lg:px-8">
           <div className="animate-fade-in-up">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-white/80 px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm">
               <Sparkles size={16} />
@@ -70,10 +138,16 @@ export default function Welcome() {
               A clean, secure, and modern cloud platform for storing, organizing, and sharing your most important files.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link to="/login" className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:bg-blue-700">
-                Get started <ArrowRight size={16} />
+              <Link
+                to="/login"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:bg-blue-700"
+              >
+                Sign In <ArrowRight size={16} />
               </Link>
-              <Link to="/register" className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:text-blue-700">
+              <Link
+                to="/register"
+                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-6 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:text-blue-700"
+              >
                 Create account
               </Link>
             </div>
@@ -82,6 +156,7 @@ export default function Welcome() {
         </div>
       </section>
 
+      {/* Features */}
       <section className="px-4 py-20 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <div className="max-w-2xl">
@@ -90,7 +165,10 @@ export default function Welcome() {
           </div>
           <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {features.map((feature) => (
-              <article key={feature.title} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl hover:shadow-blue-950/5">
+              <article
+                key={feature.title}
+                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl hover:shadow-blue-950/5"
+              >
                 <span className="grid h-12 w-12 place-items-center rounded-xl bg-blue-50 text-blue-600">
                   <feature.icon size={22} />
                 </span>
@@ -102,6 +180,7 @@ export default function Welcome() {
         </div>
       </section>
 
+      {/* Demo Video */}
       <section className="bg-slate-50 px-4 py-20 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-5xl text-center">
           <h2 className="text-3xl font-black tracking-tight text-slate-950">See the workspace in motion</h2>

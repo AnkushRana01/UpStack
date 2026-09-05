@@ -1,11 +1,13 @@
-import { Download, Share2, File, User, Lock } from 'lucide-react';
+import { Download, Share2, File, User, Lock, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import PageLoader from '../components/PageLoader.jsx';
 import { api, formatBytes } from '../lib/api.js';
 
 export default function Shared() {
   const [shares, setShares] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState(null);
 
   async function loadShares() {
     setLoading(true);
@@ -23,30 +25,43 @@ export default function Shared() {
     loadShares();
   }, []);
 
-  function download(share) {
+  async function download(share) {
+    if (downloadingId) return;
+    if (share.permission !== 'download') {
+      toast.error("You don't have permission to download this file.");
+      return;
+    }
+
+    setDownloadingId(share._id);
     const token = localStorage.getItem('token');
     const fileName = share.file?.originalName || 'downloaded-file';
     
-    toast.promise(
-      fetch(`${api.defaults.baseURL}/share/me/${share._id}/download`, { headers: { Authorization: `Bearer ${token}` } })
-        .then((response) => {
-          if (!response.ok) throw new Error('Download failed');
-          return response.blob();
-        })
-        .then((blob) => {
-          const href = URL.createObjectURL(blob);
-          const anchor = document.createElement('a');
-          anchor.href = href;
-          anchor.download = fileName;
-          anchor.click();
-          URL.revokeObjectURL(href);
-        }),
-      {
-        loading: `Decrypting and downloading ${fileName}...`,
-        success: 'Download complete!',
-        error: 'Insufficient download permissions for this item.'
+    try {
+      const response = await fetch(`${api.defaults.baseURL}/share/me/${share._id}/download`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
+        const errorJson = await response.json().catch(() => ({}));
+        const message = errorJson.message || (response.status === 403
+          ? "You don't have permission to download this file."
+          : "Download failed. Please try again.");
+        throw new Error(message);
       }
-    );
+
+      const blob = await response.blob();
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = href;
+      anchor.download = fileName;
+      anchor.click();
+      URL.revokeObjectURL(href);
+      toast.success('Download complete!');
+    } catch (error) {
+      toast.error(error.message || 'Could not download file.');
+    } finally {
+      setDownloadingId(null);
+    }
   }
 
   return (
@@ -59,10 +74,7 @@ export default function Shared() {
       </div>
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-100 bg-white p-20 dark:border-slate-800 dark:bg-slate-900 shadow-sm gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-3 border-cyan-500 border-t-transparent" />
-          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">Loading incoming shares...</p>
-        </div>
+        <PageLoader text="Loading incoming shares..." />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {shares.map((share) => (
@@ -102,24 +114,35 @@ export default function Shared() {
                   <Lock size={13} className="text-slate-400" />
                   <span>Access:</span>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                    share.permission === 'download' || share.permission === 'edit'
+                    share.permission === 'download'
                       ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-450'
                       : 'bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-450'
                   }`}>
-                    {share.permission}
+                    {share.permission === 'download' ? 'Download' : 'No Access'}
                   </span>
                 </div>
               </div>
 
-              {/* Download Button */}
+              {/* Download Button or Legacy Message */}
               <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-850 flex justify-end">
-                <button 
-                  onClick={() => download(share)} 
-                  className="inline-flex items-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-850 dark:bg-slate-100 dark:hover:bg-slate-200 px-4 py-2 text-xs font-bold text-white dark:text-slate-950 shadow-md transition duration-150"
-                >
-                  <Download size={13} /> 
-                  <span>Download</span>
-                </button>
+                {share.permission === 'download' ? (
+                  <button 
+                    disabled={downloadingId === share._id}
+                    onClick={() => download(share)} 
+                    className="inline-flex items-center gap-2 rounded-lg bg-slate-900 hover:bg-slate-850 dark:bg-slate-100 dark:hover:bg-slate-200 px-4 py-2 text-xs font-bold text-white dark:text-slate-950 shadow-md transition duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {downloadingId === share._id ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <Download size={13} />
+                    )}
+                    <span>{downloadingId === share._id ? 'Downloading...' : 'Download'}</span>
+                  </button>
+                ) : (
+                  <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-2.5 rounded-xl border border-amber-200/50 dark:border-amber-800/30 w-full text-left font-medium">
+                    Download access is not available for this shared file. Ask the owner to reshare it with Download permission.
+                  </p>
+                )}
               </div>
             </article>
           ))}

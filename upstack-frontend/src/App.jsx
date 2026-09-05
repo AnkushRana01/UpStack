@@ -13,9 +13,9 @@ import Welcome from './pages/Welcome.jsx';
 export default function App() {
   return (
     <Routes>
+      <Route path="/welcome" element={<Welcome />} />
       <Route path="/login" element={<Auth mode="login" />} />
       <Route path="/register" element={<Auth mode="register" />} />
-      <Route path="/welcome" element={<Welcome />} />
       <Route path="/share/:token" element={<ShareLink />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<Layout />}>
@@ -26,7 +26,8 @@ export default function App() {
           <Route path="/settings" element={<Settings />} />
         </Route>
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      {/* Catch-all: redirect to welcome page */}
+      <Route path="*" element={<Navigate to="/welcome" replace />} />
     </Routes>
   );
 }

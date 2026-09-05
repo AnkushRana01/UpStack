@@ -13,7 +13,8 @@ async function ownedFile(fileId, ownerId) {
 export async function shareWithUser(req, res, next) {
   try {
     const file = await ownedFile(req.params.fileId, req.user._id);
-    const recipient = await User.findOne({ email: req.body.email, isActive: true });
+    const email = req.body.email ? req.body.email.trim().toLowerCase() : '';
+    const recipient = await User.findOne({ email, isActive: true });
 
     if (!file || !recipient) {
       res.status(404);
@@ -25,13 +26,23 @@ export async function shareWithUser(req, res, next) {
       throw new Error('You already own this file');
     }
 
-    const permission = ['view', 'download', 'edit'].includes(req.body.permission) ? req.body.permission : 'view';
-    const share = await SharedFile.create({
-      file: file._id,
-      owner: req.user._id,
-      sharedWith: recipient._id,
-      permission
-    });
+    // Only 'download' permission is supported. Reject any other permission.
+    if (req.body.permission && req.body.permission !== 'download') {
+      res.status(400);
+      throw new Error("Invalid permission. Only 'download' permission is supported.");
+    }
+
+    // Upsert the share to guarantee 'download' permission without creating duplicates
+    const share = await SharedFile.findOneAndUpdate(
+      { file: file._id, sharedWith: recipient._id },
+      {
+        file: file._id,
+        owner: req.user._id,
+        sharedWith: recipient._id,
+        permission: 'download'
+      },
+      { upsert: true, new: true, runValidators: true }
+    );
 
     await logActivity({ actor: req.user._id, action: 'FILE_SHARED_USER', targetType: 'share', targetId: share._id, ipAddress: req.ip });
     res.status(201).json({ share });
@@ -49,11 +60,15 @@ export async function createShareLink(req, res, next) {
       throw new Error('File not found');
     }
 
-    const permission = ['view', 'download'].includes(req.body.permission) ? req.body.permission : 'download';
+    if (req.body.permission && req.body.permission !== 'download') {
+      res.status(400);
+      throw new Error("Invalid permission. Only 'download' permission is supported.");
+    }
+
     const share = await SharedFile.create({
       file: file._id,
       owner: req.user._id,
-      permission,
+      permission: 'download',
       token: nanoid(32),
       expiresAt: req.body.expiresAt || null,
       isLink: true
@@ -80,18 +95,36 @@ export async function downloadSharedWithMe(req, res, next) {
   try {
     const share = await SharedFile.findOne({ _id: req.params.shareId, sharedWith: req.user._id }).populate('file');
 
-    if (!share || !['download', 'edit'].includes(share.permission)) {
+    if (!share) {
+      res.status(404);
+      throw new Error('Shared file not found');
+    }
+
+    if (share.permission !== 'download') {
       res.status(403);
-      throw new Error('Download permission is required');
+      throw new Error("You don't have permission to download this file.");
     }
 
     const file = share.file;
-    const encrypted = await readObject(file.storageKey);
-    const decrypted = decryptBuffer(encrypted, file.iv, file.authTag);
+    if (!file) {
+      res.status(404);
+      throw new Error('File not found or has been deleted');
+    }
+
+    if (!file.storageKey) {
+      res.status(404);
+      throw new Error('File storage information is missing. Unable to download this file.');
+    }
+
+    const rawBuffer = await readObject(file.storageKey);
+    const fileBuffer = (file.iv && file.authTag)
+      ? decryptBuffer(rawBuffer, file.iv, file.authTag)
+      : rawBuffer;
+
     await logActivity({ actor: req.user._id, action: 'SHARED_FILE_DOWNLOADED', targetType: 'share', targetId: share._id, ipAddress: req.ip });
-    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.originalName)}"`);
-    res.send(decrypted);
+    res.send(fileBuffer);
   } catch (error) {
     next(error);
   }
@@ -123,16 +156,24 @@ export async function downloadShareLink(req, res, next) {
 
     if (share.permission !== 'download') {
       res.status(403);
-      throw new Error('Download permission is required');
+      throw new Error("You don't have permission to download this file.");
     }
 
     const file = share.file;
-    const encrypted = await readObject(file.storageKey);
-    const decrypted = decryptBuffer(encrypted, file.iv, file.authTag);
+    if (!file || !file.storageKey) {
+      res.status(404);
+      throw new Error('File not found or storage information missing');
+    }
+
+    const rawBuffer = await readObject(file.storageKey);
+    const fileBuffer = (file.iv && file.authTag)
+      ? decryptBuffer(rawBuffer, file.iv, file.authTag)
+      : rawBuffer;
+
     await logActivity({ actor: share.owner, action: 'SHARE_LINK_DOWNLOADED', targetType: 'share', targetId: share._id, ipAddress: req.ip });
-    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.originalName)}"`);
-    res.send(decrypted);
+    res.send(fileBuffer);
   } catch (error) {
     next(error);
   }
