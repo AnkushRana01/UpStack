@@ -1,22 +1,31 @@
-import { Cloud, Files, Gauge, LogOut, Menu, Moon, Settings, Share2, Shield, Sun, UserCircle, X } from 'lucide-react';
+import { Cloud, Files, Gauge, LogOut, Menu, Moon, Settings, Share2, Shield, Sun, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import AppFooter from './AppFooter.jsx';
+import GlobalSearchBar from './GlobalSearchBar.jsx';
+import UploadNewButton from './UploadNewButton.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [dark, setDark] = useState(() => localStorage.getItem('theme') === 'dark');
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isAdmin = user?.role === 'admin';
+  const isDashboard = location.pathname === '/' || location.pathname === '/dashboard';
+  const isFiles = location.pathname === '/files';
+  const isShared = location.pathname === '/shared';
+  const isAdminConsole = location.pathname === '/admin';
+  const isSettings = location.pathname === '/settings';
+  const hideNavbar = isAdminConsole || isSettings;
 
   // Nav items: admins see Admin Console instead of separate Settings
   const nav = [
     { to: '/', label: 'Dashboard', icon: Gauge },
-    { to: '/files', label: 'Files', icon: Files },
-    { to: '/shared', label: 'Shared', icon: Share2 },
+    { to: '/files', label: 'My Files', icon: Files },
+    { to: '/shared', label: 'Shared Files', icon: Share2 },
     // For admins: show Admin Console (settings are inside Admin page)
     ...(isAdmin
       ? [{ to: '/admin', label: 'Admin Console', icon: Shield }]
@@ -36,7 +45,7 @@ export default function Layout() {
 
   // UpStack Logo component
   const Logo = () => (
-    <div className="flex items-center gap-3">
+    <Link to="/" className="flex items-center gap-3">
       <div className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
         <Cloud size={24} />
       </div>
@@ -44,7 +53,7 @@ export default function Layout() {
         <p className="text-base font-black tracking-tight text-slate-950 dark:text-white">UpStack</p>
         <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Cloud Drive</p>
       </div>
-    </div>
+    </Link>
   );
 
   const NavItems = ({ onClick }) => (
@@ -109,54 +118,80 @@ export default function Layout() {
       </aside>
 
       <div className="flex min-h-screen flex-col lg:pl-72">
-        {/* Navigation Header */}
-        <header className="sticky top-0 z-10 flex min-h-[68px] items-center justify-between gap-4 border-b border-slate-200/80 bg-white/80 px-4 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/80 md:px-8">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <button
-              onClick={() => setMobileOpen(true)}
-              className="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden text-slate-500"
-              aria-label="Open menu"
-            >
-              <Menu size={20} />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Dark mode toggle */}
-            <button
-              className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-              onClick={() => setDark((v) => !v)}
-              title="Toggle theme"
-              aria-label="Toggle dark mode"
-            >
-              {dark ? <Sun size={17} /> : <Moon size={17} />}
-            </button>
-
-            {/* User info — no dropdown arrow */}
-            <div className="hidden items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:flex">
-              <UserCircle size={26} className="shrink-0 text-blue-600 dark:text-blue-300" />
-              <div className="max-w-[130px]">
-                <p className="truncate text-sm font-black text-slate-900 dark:text-white leading-tight">{user?.name}</p>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 leading-tight">{user?.role}</p>
-              </div>
+        {/* Navigation Header - Hidden on Admin Console and Settings pages per P2 */}
+        {!hideNavbar ? (
+          <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-4 pt-6 pb-2 md:px-8 md:pt-8 md:pb-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={() => setMobileOpen(true)}
+                className="rounded-lg p-2 hover:bg-slate-200/60 dark:hover:bg-slate-800 lg:hidden text-slate-600 dark:text-slate-400"
+                aria-label="Open menu"
+              >
+                <Menu size={22} />
+              </button>
+              {isDashboard && (
+                <h1 className="text-xl sm:text-2xl lg:text-[28px] font-bold tracking-tight text-slate-900 dark:text-white truncate">
+                  Welcome, {user?.name || 'User'}! 👋🏻
+                </h1>
+              )}
+              {isFiles && (
+                <h1 className="text-xl sm:text-2xl lg:text-[28px] font-bold tracking-tight text-slate-900 dark:text-white truncate">
+                  My Files
+                </h1>
+              )}
+              {isShared && (
+                <h1 className="text-xl sm:text-2xl lg:text-[28px] font-bold tracking-tight text-slate-900 dark:text-white truncate">
+                  Shared Files
+                </h1>
+              )}
             </div>
 
-            {/* Logout */}
+            <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap sm:flex-nowrap">
+              {/* Upload New Files and Folder Button */}
+              <UploadNewButton />
+
+              {/* Global Search Bar */}
+              <GlobalSearchBar />
+
+              {/* Dark mode toggle */}
+              <button
+                className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 shadow-xs transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 sm:p-2.5"
+                onClick={() => setDark((v) => !v)}
+                title="Toggle theme"
+                aria-label="Toggle dark mode"
+              >
+                {dark ? <Sun size={17} /> : <Moon size={17} />}
+              </button>
+
+              {/* Logout */}
+              <button
+                className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200 sm:px-3.5 sm:py-2.5"
+                onClick={onLogout}
+                aria-label="Log out"
+                title="Log out"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <LogOut size={14} />
+                  <span className="hidden md:inline">Logout</span>
+                </span>
+              </button>
+            </div>
+          </header>
+        ) : (
+          /* Mobile menu toggle for pages where navbar is removed */
+          <div className="lg:hidden flex items-center justify-between px-4 pt-4 pb-0">
             <button
-              className="rounded-xl bg-slate-950 px-3.5 py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200"
-              onClick={onLogout}
-              aria-label="Log out"
+              onClick={() => setMobileOpen(true)}
+              className="rounded-lg p-2 hover:bg-slate-200/60 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+              aria-label="Open menu"
             >
-              <span className="inline-flex items-center gap-2">
-                <LogOut size={14} />
-                <span className="hidden sm:inline">Logout</span>
-              </span>
+              <Menu size={22} />
             </button>
           </div>
-        </header>
+        )}
 
         {/* Main Content Area */}
-        <main className="flex-1 p-4 md:p-8 animate-fade-in-up">
+        <main className={`flex-1 px-4 pb-8 md:px-8 md:pb-8 animate-fade-in-up ${hideNavbar ? 'pt-4 md:pt-6' : 'pt-2'}`}>
           <Outlet />
         </main>
         <AppFooter dark={dark} />

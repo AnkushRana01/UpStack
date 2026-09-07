@@ -3,6 +3,7 @@ import path from 'path';
 import { File } from '../models/File.js';
 import { User } from '../models/User.js';
 import { logActivity } from '../services/activityService.js';
+import { checkStorageLimits, USER_STORAGE_LIMIT_BYTES } from '../services/storageLimitService.js';
 import { uploadFileToS3 } from '../utils/s3.js';
 
 // Store uploads in memory so we do not write files to disk.
@@ -10,7 +11,7 @@ const storage = multer.memoryStorage();
 
 export const upload = multer({
   storage,
-  limits: { fileSize: 100 * 1024 * 1024 },
+  limits: { fileSize: USER_STORAGE_LIMIT_BYTES },
   fileFilter: (_req, file, cb) => {
     if (!file?.originalname) {
       cb(new Error('Invalid file upload.'));
@@ -30,6 +31,10 @@ export async function uploadToS3(req, res, next) {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file was provided.' });
     }
+
+    // Enforce 200 MB user limit and 5 GB organization limit before proceeding
+    const newFileSize = req.file.size || 0;
+    await checkStorageLimits(req.user._id, newFileSize);
 
     const userId = req.user?._id?.toString() || 'anonymous';
     const uploadResult = await uploadFileToS3(req.file, userId);

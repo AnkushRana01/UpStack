@@ -6,13 +6,17 @@ import { logActivity } from '../services/activityService.js';
 import { decryptBuffer } from '../services/encryptionService.js';
 import { readObject } from '../services/storageService.js';
 
-async function ownedFile(fileId, ownerId) {
-  return File.findOne({ _id: fileId, owner: ownerId, isFolder: false });
+async function accessibleFileToShare(fileId, user) {
+  const query = { _id: fileId, isFolder: false };
+  if (user?.role !== 'admin') {
+    query.owner = user._id;
+  }
+  return File.findOne(query);
 }
 
 export async function shareWithUser(req, res, next) {
   try {
-    const file = await ownedFile(req.params.fileId, req.user._id);
+    const file = await accessibleFileToShare(req.params.fileId, req.user);
     const email = req.body.email ? req.body.email.trim().toLowerCase() : '';
     const recipient = await User.findOne({ email, isActive: true });
 
@@ -21,9 +25,9 @@ export async function shareWithUser(req, res, next) {
       throw new Error('File or recipient not found');
     }
 
-    if (String(recipient._id) === String(req.user._id)) {
+    if (String(recipient._id) === String(file.owner)) {
       res.status(400);
-      throw new Error('You already own this file');
+      throw new Error('User already owns this file');
     }
 
     // Only 'download' permission is supported. Reject any other permission.
@@ -37,7 +41,7 @@ export async function shareWithUser(req, res, next) {
       { file: file._id, sharedWith: recipient._id },
       {
         file: file._id,
-        owner: req.user._id,
+        owner: file.owner,
         sharedWith: recipient._id,
         permission: 'download'
       },
@@ -53,7 +57,7 @@ export async function shareWithUser(req, res, next) {
 
 export async function createShareLink(req, res, next) {
   try {
-    const file = await ownedFile(req.params.fileId, req.user._id);
+    const file = await accessibleFileToShare(req.params.fileId, req.user);
 
     if (!file) {
       res.status(404);
@@ -67,7 +71,7 @@ export async function createShareLink(req, res, next) {
 
     const share = await SharedFile.create({
       file: file._id,
-      owner: req.user._id,
+      owner: file.owner,
       permission: 'download',
       token: nanoid(32),
       expiresAt: req.body.expiresAt || null,
@@ -84,8 +88,49 @@ export async function createShareLink(req, res, next) {
 
 export async function getSharedWithMe(req, res, next) {
   try {
-    const shares = await SharedFile.find({ sharedWith: req.user._id }).populate('file owner', 'originalName size mimeType name email');
-    res.json({ shares });
+    const shares = await SharedFile.find({ sharedWith: req.user._id })
+      .populate('file', 'originalName size mimeType isFolder createdAt')
+      .populate('owner', 'name email')
+      .sort({ createdAt: -1 });
+    const validShares = shares.filter((s) => s.file);
+    res.json({ shares: validShares });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getSharedByMe(req, res, next) {
+  try {
+    const shares = await SharedFile.find({ owner: req.user._id, sharedWith: { $ne: null } })
+      .populate('file', 'originalName size mimeType isFolder createdAt')
+      .populate('sharedWith', 'name email')
+      .sort({ createdAt: -1 });
+    const validShares = shares.filter((s) => s.file);
+    res.json({ shares: validShares });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function revokeShare(req, res, next) {
+  try {
+    const query = { _id: req.params.shareId };
+    if (req.user.role !== 'admin') {
+      query.owner = req.user._id;
+    }
+    const share = await SharedFile.findOneAndDelete(query);
+    if (!share) {
+      res.status(404);
+      throw new Error('Share not found or unauthorized');
+    }
+    await logActivity({
+      actor: req.user._id,
+      action: 'SHARE_REVOKED',
+      targetType: 'share',
+      targetId: share._id,
+      ipAddress: req.ip
+    });
+    res.json({ message: 'Share revoked successfully' });
   } catch (error) {
     next(error);
   }

@@ -1,173 +1,424 @@
-import { Database, FileText, HardDrive, Clock, ArrowUpRight, Share2, Download, Trash2, FolderPlus, LogIn, UserPlus } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import {
+  Database,
+  Download,
+  File,
+  FileArchive,
+  FileSpreadsheet,
+  FileText,
+  Folder,
+  HardDrive,
+  Image as ImageIcon,
+  Loader2,
+  MoreHorizontal,
+  Share2
+} from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import MetricCard from '../components/MetricCard.jsx';
-import { useAuth } from '../context/AuthContext.jsx';
-import { api, formatBytes } from '../lib/api.js';
-
 import PageLoader from '../components/PageLoader.jsx';
+import QuickUploadCard from '../components/QuickUploadCard.jsx';
+import ShareModal from '../components/ShareModal.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
+import { api, downloadUrl, formatBytes } from '../lib/api.js';
+
+function formatRelativeTime(dateString) {
+  if (!dateString) return 'recently';
+  const now = new Date();
+  const date = new Date(dateString);
+  const diffMs = now - date;
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return 'Just now';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} ${diffMin === 1 ? 'min' : 'mins'} ago`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} ${diffHour === 1 ? 'hour' : 'hours'} ago`;
+  const diffDays = Math.floor(diffHour / 24);
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 30) return `${diffDays} days ago`;
+  return date.toLocaleDateString();
+}
+
+function getFileTypeDetails(file) {
+  if (file.isFolder) {
+    return {
+      label: 'Folder',
+      color: 'bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400',
+      icon: Folder
+    };
+  }
+  const ext = file.originalName?.split('.').pop()?.toUpperCase() || 'FILE';
+  const mime = file.mimeType || '';
+
+  if (mime.includes('pdf') || ext === 'PDF') {
+    return {
+      label: 'PDF',
+      color: 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400',
+      icon: FileText
+    };
+  }
+  if (mime.startsWith('image/') || ['PNG', 'JPG', 'JPEG', 'WEBP', 'SVG'].includes(ext)) {
+    return {
+      label: ext,
+      color: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400',
+      icon: ImageIcon
+    };
+  }
+  if (['ZIP', 'RAR', '7Z', 'TAR', 'GZ'].includes(ext) || mime.includes('zip') || mime.includes('tar')) {
+    return {
+      label: ext.toLowerCase() + '.zip',
+      color: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400',
+      icon: FileArchive
+    };
+  }
+  if (['XLS', 'XLSX', 'CSV'].includes(ext) || mime.includes('sheet') || mime.includes('excel')) {
+    return {
+      label: ext.toLowerCase(),
+      color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400',
+      icon: FileSpreadsheet
+    };
+  }
+  return {
+    label: ext,
+    color: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+    icon: File
+  };
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [files, setFiles] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [userActivity, setUserActivity] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [shareModalFile, setShareModalFile] = useState(null);
+  const [sharing, setSharing] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
+
+  const loadDashboardData = useCallback(async (showLoader = false) => {
+    if (showLoader) setLoading(true);
+    try {
+      const filesResponse = await api.get('/files');
+      setFiles(filesResponse.data.files || []);
+    } catch (_err) {
+      // silently ignore
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      try {
-        const filesResponse = await api.get('/files');
-        setFiles(filesResponse.data.files);
-
-        if (user?.role === 'admin') {
-          const { data } = await api.get('/admin/stats');
-          setStats(data);
-          setUserActivity(data.recentActivity || []);
-        } else {
-          const { data } = await api.get('/auth/activity');
-          setUserActivity(data.logs || []);
-        }
-      } catch (_err) {
-        // silently ignore — individual components handle empty state
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [user]);
+    loadDashboardData(true);
+    const handleRefresh = () => loadDashboardData(false);
+    window.addEventListener('upstack:refresh-files', handleRefresh);
+    return () => window.removeEventListener('upstack:refresh-files', handleRefresh);
+  }, [loadDashboardData]);
 
   const userStorage = files.reduce((total, file) => total + (file.isFolder ? 0 : file.size), 0);
 
-  function getActionBadge(action) {
-    const act = action.toUpperCase();
-    if (act.includes('UPLOAD'))   return { label: 'Upload',   color: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-200/20', icon: ArrowUpRight };
-    if (act.includes('DOWNLOAD')) return { label: 'Download', color: 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 border-blue-200/20',           icon: Download };
-    if (act.includes('DELETE'))   return { label: 'Delete',   color: 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400 border-rose-200/20',           icon: Trash2 };
-    if (act.includes('FOLDER'))   return { label: 'Folder',   color: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 border-amber-200/20',       icon: FolderPlus };
-    if (act.includes('SHARE'))    return { label: 'Share',    color: 'bg-purple-50 text-purple-700 dark:bg-purple-950/30 dark:text-purple-400 border-purple-200/20',  icon: Share2 };
-    if (act.includes('LOGIN'))    return { label: 'Login',    color: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400 border-indigo-200/20',  icon: LogIn };
-    if (act.includes('REGISTER')) return { label: 'Register', color: 'bg-teal-50 text-teal-700 dark:bg-teal-950/30 dark:text-teal-400 border-teal-200/20',           icon: UserPlus };
-    return { label: 'System', color: 'bg-slate-50 text-slate-700 dark:bg-slate-950/30 dark:text-slate-400 border-slate-200/20', icon: Clock };
+  // Filter and display recent files and folders (most recently created/uploaded)
+  const recentItems = [...files]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 6);
+
+  async function handleShareSubmit(email) {
+    if (!shareModalFile || sharing) return;
+    setSharing(true);
+    try {
+      await api.post(`/share/${shareModalFile._id}/user`, {
+        email: email.trim(),
+        permission: 'download'
+      });
+      toast.success(`Shared successfully with ${email}`);
+      setShareModalFile(null);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Share failed');
+    } finally {
+      setSharing(false);
+    }
   }
 
-  // Page-level loading indicator
+  async function handleDownload(file) {
+    if (downloadingId || file.isFolder) return;
+    setDownloadingId(file._id);
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(downloadUrl(file._id), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
+        const errorJson = await response.json().catch(() => ({}));
+        const message = errorJson.message || (response.status === 403
+          ? "You don't have permission to download this file."
+          : 'Download failed. Please try again.');
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = href;
+      anchor.download = file.originalName;
+      anchor.click();
+      URL.revokeObjectURL(href);
+      toast.success('Download complete!');
+    } catch (error) {
+      toast.error(error.message || 'Could not download file.');
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
+  function renderOwnerName(item) {
+    if (!item.owner) return 'You';
+    const ownerId = typeof item.owner === 'object' ? item.owner._id : item.owner;
+    if (ownerId && String(ownerId) === String(user?._id)) {
+      return 'You';
+    }
+    return typeof item.owner === 'object' ? (item.owner.name || 'Member') : 'Member';
+  }
+
   if (loading) {
     return <PageLoader text="Loading your workspace…" />;
   }
 
   return (
     <div className="space-y-8">
-      
-      {/* Welcome Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">Overview</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Welcome to your secure file vault, {user?.name}.</p>
+      {/* 4 Stats Cards matching P1: Total Files, Used Storage, Created Folders, Quick Upload */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="hover-card-trigger">
+          <MetricCard
+            label="Total Files"
+            value={files.filter((f) => !f.isFolder).length}
+            icon={FileText}
+            accent="text-cyan-600 dark:text-cyan-400"
+          />
+        </div>
+        <div className="hover-card-trigger">
+          <MetricCard
+            label="Used Storage"
+            value={formatBytes(userStorage)}
+            icon={HardDrive}
+            accent="text-emerald-600 dark:text-emerald-400"
+          />
+        </div>
+        <div className="hover-card-trigger">
+          <MetricCard
+            label="Created Folders"
+            value={files.filter((f) => f.isFolder).length}
+            icon={Database}
+            accent="text-amber-600 dark:text-amber-400"
+          />
+        </div>
+        <div className="hover-card-trigger">
+          <QuickUploadCard />
         </div>
       </div>
 
-      {/* Stats Cards — 3 cards (Role Assignment removed) */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="hover-card-trigger">
-          <MetricCard label="Total Files" value={files.filter((f) => !f.isFolder).length} icon={FileText} accent="text-cyan-600 dark:text-cyan-400" />
-        </div>
-        <div className="hover-card-trigger">
-          <MetricCard label="Used Storage" value={formatBytes(userStorage)} icon={HardDrive} accent="text-emerald-600 dark:text-emerald-400" />
-        </div>
-        <div className="hover-card-trigger">
-          <MetricCard label="Created Folders" value={files.filter((f) => f.isFolder).length} icon={Database} accent="text-amber-600 dark:text-amber-400" />
-        </div>
-      </div>
+      {/* Main Grid: Recent Activity Table + Storage Usage */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Recent Activity Section matching P1 visual reference */}
+        <section className="rounded-2xl border border-slate-100 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60 lg:col-span-2 shadow-sm flex flex-col justify-between overflow-hidden">
+          <div>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-bold text-slate-900 dark:text-white text-lg tracking-tight">
+                Recent Activity
+              </h3>
+              <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">
+                Recently uploaded files & folders
+              </span>
+            </div>
 
-      {/* Main Grid: Activity Log + Storage */}
-      <div className="grid gap-6 md:grid-cols-3">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 dark:border-slate-800/80 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    <th className="pb-3 pl-1 font-semibold">File Name</th>
+                    <th className="pb-3 px-3 font-semibold">Owner</th>
+                    <th className="pb-3 px-3 font-semibold">Modified</th>
+                    <th className="pb-3 px-3 font-semibold">Type</th>
+                    <th className="pb-3 px-3 font-semibold">Size</th>
+                    <th className="pb-3 pr-1 text-right font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
+                  {recentItems.length > 0 ? (
+                    recentItems.map((item) => {
+                      const typeDetails = getFileTypeDetails(item);
+                      const TypeIcon = typeDetails.icon;
+                      return (
+                        <tr
+                          key={item._id}
+                          className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors duration-150"
+                        >
+                          {/* File Name + Icon */}
+                          <td className="py-3.5 pl-1 pr-3 font-medium text-slate-900 dark:text-slate-100">
+                            <div className="flex items-center gap-2.5 min-w-0 max-w-[200px] sm:max-w-[240px]">
+                              <span
+                                className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ${typeDetails.color}`}
+                              >
+                                <TypeIcon size={15} />
+                              </span>
+                              <span className="truncate font-semibold text-slate-800 dark:text-slate-200" title={item.originalName}>
+                                {item.originalName}
+                              </span>
+                            </div>
+                          </td>
 
-        {/* Activity Logs */}
-        <section className="rounded-2xl border border-slate-100 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60 md:col-span-2 shadow-sm">
-          <div className="flex items-center gap-2 mb-6">
-            <Clock className="text-cyan-500 stroke-[2.2]" size={18} />
-            <h3 className="font-bold text-slate-900 dark:text-white text-base">Recent Activity</h3>
-          </div>
+                          {/* Owner */}
+                          <td className="py-3.5 px-3 whitespace-nowrap text-slate-600 dark:text-slate-400 font-medium">
+                            {renderOwnerName(item)}
+                          </td>
 
-          <div className="space-y-3.5">
-            {userActivity.length ? (
-              userActivity.map((item) => {
-                const badge = getActionBadge(item.action);
-                const IconComponent = badge.icon;
-                return (
-                  <div
-                    key={item._id}
-                    className="flex items-center justify-between border-b border-slate-100 pb-3 last:border-0 last:pb-0 dark:border-slate-800"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border ${badge.color} shrink-0`}>
-                        <IconComponent size={14} />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
-                          {item.actor?.name || 'You'}{' '}
-                          <span className="font-normal text-slate-500 dark:text-slate-400">
-                            {item.action.toLowerCase().replaceAll('_', ' ').replace('user ', '').replace('file ', '')}
-                          </span>
-                        </p>
-                        {/* Show file name only — no IP address */}
-                        {item.metadata?.name && (
-                          <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">
-                            {item.metadata.name}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 whitespace-nowrap ml-4">
-                      {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                );
-              })
-            ) : (
-              <p className="text-sm text-slate-400 dark:text-slate-500 py-8 text-center">No activity logged yet.</p>
-            )}
+                          {/* Modified Relative Time */}
+                          <td className="py-3.5 px-3 whitespace-nowrap text-slate-500 dark:text-slate-400">
+                            {formatRelativeTime(item.createdAt)}
+                          </td>
+
+                          {/* Type */}
+                          <td className="py-3.5 px-3 whitespace-nowrap">
+                            <span className="inline-block rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                              {typeDetails.label}
+                            </span>
+                          </td>
+
+                          {/* Size */}
+                          <td className="py-3.5 px-3 whitespace-nowrap text-slate-500 dark:text-slate-400 font-medium">
+                            {item.isFolder ? '-' : formatBytes(item.size)}
+                          </td>
+
+                          {/* Actions: Share & Download */}
+                          <td className="py-3.5 pr-1 pl-3 text-right whitespace-nowrap">
+                            <div className="inline-flex items-center gap-3">
+                              {/* Folder or File Actions */}
+                              {item.isFolder ? (
+                                <button
+                                  type="button"
+                                  onClick={() => navigate('/files')}
+                                  className="inline-flex items-center gap-1 font-semibold text-slate-600 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition"
+                                  title="Open folder"
+                                >
+                                  <Folder size={13} />
+                                  <span>Open</span>
+                                </button>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShareModalFile(item)}
+                                    className="inline-flex items-center gap-1 font-semibold text-slate-600 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition"
+                                    title="Share file"
+                                  >
+                                    <Share2 size={13} />
+                                    <span>Share</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownload(item)}
+                                    disabled={downloadingId === item._id}
+                                    className="inline-flex items-center gap-1 font-semibold text-slate-600 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition disabled:opacity-50"
+                                    title="Download file"
+                                  >
+                                    {downloadingId === item._id ? (
+                                      <Loader2 size={13} className="animate-spin" />
+                                    ) : (
+                                      <Download size={13} />
+                                    )}
+                                    <span>Download</span>
+                                  </button>
+                                </>
+                              )}
+
+                              {/* More details / actions */}
+                              <span className="text-slate-300 dark:text-slate-700">
+                                <MoreHorizontal size={14} />
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-slate-400 dark:text-slate-500">
+                        No recently uploaded files or created folders yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
 
-        {/* Storage Usage */}
+        {/* Storage Usage Section */}
         <section className="rounded-2xl border border-slate-100 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60 shadow-sm flex flex-col justify-between">
           <div>
-            <h3 className="font-bold text-slate-900 dark:text-white text-base mb-5">Storage Usage</h3>
+            <h3 className="font-bold text-slate-900 dark:text-white text-base mb-5">
+              Storage Usage
+            </h3>
 
             <div className="flex items-baseline justify-between mb-2">
-              <span className="text-2xl font-extrabold text-cyan-600 dark:text-cyan-400 tracking-tight">{formatBytes(userStorage)}</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Used of 5 GB</span>
+              <span className="text-2xl font-extrabold text-blue-600 dark:text-blue-400 tracking-tight">
+                {formatBytes(userStorage)}
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                Used of {user?.role === 'admin' ? '5 GB' : '200 MB'}
+              </span>
             </div>
 
             {/* Storage Progress Bar */}
             <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-6">
               <div
-                className="h-full rounded-full bg-cyan-500 dark:bg-cyan-400 transition-all duration-300"
-                style={{ width: `${Math.min(100, (userStorage / (5 * 1024 * 1024 * 1024)) * 100)}%` }}
+                className="h-full rounded-full bg-blue-600 dark:bg-blue-400 transition-all duration-300"
+                style={{
+                  width: `${Math.min(100, (userStorage / (user?.role === 'admin' ? 5 * 1024 * 1024 * 1024 : 200 * 1024 * 1024)) * 100)}%`
+                }}
               />
             </div>
 
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs border-b border-slate-100 pb-2 dark:border-slate-800">
                 <span className="text-slate-500">Images</span>
-                <span className="font-bold text-slate-700 dark:text-slate-300">{files.filter(f => f.mimeType?.startsWith('image/')).length} files</span>
+                <span className="font-bold text-slate-700 dark:text-slate-300">
+                  {files.filter((f) => f.mimeType?.startsWith('image/')).length} files
+                </span>
               </div>
               <div className="flex items-center justify-between text-xs border-b border-slate-100 pb-2 dark:border-slate-800">
                 <span className="text-slate-500">Documents</span>
-                <span className="font-bold text-slate-700 dark:text-slate-300">{files.filter(f => f.mimeType?.includes('pdf') || f.mimeType?.includes('text')).length} files</span>
+                <span className="font-bold text-slate-700 dark:text-slate-300">
+                  {
+                    files.filter(
+                      (f) => f.mimeType?.includes('pdf') || f.mimeType?.includes('text')
+                    ).length
+                  } files
+                </span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-500">Media</span>
-                <span className="font-bold text-slate-700 dark:text-slate-300">{files.filter(f => f.mimeType?.startsWith('video/') || f.mimeType?.startsWith('audio/')).length} files</span>
+                <span className="font-bold text-slate-700 dark:text-slate-300">
+                  {
+                    files.filter(
+                      (f) => f.mimeType?.startsWith('video/') || f.mimeType?.startsWith('audio/')
+                    ).length
+                  } files
+                </span>
               </div>
             </div>
           </div>
-          {/* "View storage allocation details" link removed per requirements */}
         </section>
-
       </div>
+
+      {/* Share Modal Dialog */}
+      {shareModalFile && (
+        <ShareModal
+          file={shareModalFile}
+          busy={sharing}
+          onClose={() => setShareModalFile(null)}
+          onShare={handleShareSubmit}
+        />
+      )}
     </div>
   );
 }

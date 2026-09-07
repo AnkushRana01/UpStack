@@ -1,6 +1,7 @@
 import { ActivityLog } from '../models/ActivityLog.js';
 import { File } from '../models/File.js';
 import { User } from '../models/User.js';
+import { ORG_STORAGE_LIMIT_BYTES } from '../services/storageLimitService.js';
 
 export async function stats(_req, res, next) {
   try {
@@ -8,13 +9,17 @@ export async function stats(_req, res, next) {
       User.countDocuments(),
       File.countDocuments({ isFolder: false }),
       File.aggregate([{ $match: { isFolder: false } }, { $group: { _id: null, total: { $sum: '$size' } } }]),
-      ActivityLog.find().sort({ createdAt: -1 }).limit(8).populate('actor', 'name email')
+      ActivityLog.find({ action: { $in: ['FILE_UPLOADED', 'FOLDER_CREATED'] } })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate('actor', 'name email')
     ]);
 
     res.json({
       users,
       files,
       storageUsed: storage[0]?.total || 0,
+      storageLimit: ORG_STORAGE_LIMIT_BYTES,
       recentActivity: recent
     });
   } catch (error) {
@@ -24,7 +29,26 @@ export async function stats(_req, res, next) {
 
 export async function users(_req, res, next) {
   try {
-    res.json({ users: await User.find().sort({ createdAt: -1 }) });
+    const userList = await User.find().sort({ createdAt: -1 }).lean();
+    const userIds = userList.map((u) => u._id);
+
+    const lastLogins = await ActivityLog.aggregate([
+      { $match: { actor: { $in: userIds }, action: 'USER_LOGIN' } },
+      { $sort: { createdAt: -1 } },
+      { $group: { _id: '$actor', lastLogin: { $first: '$createdAt' } } }
+    ]);
+
+    const loginMap = {};
+    lastLogins.forEach((l) => {
+      loginMap[l._id.toString()] = l.lastLogin;
+    });
+
+    const enrichedUsers = userList.map((u) => ({
+      ...u,
+      lastLogin: u.lastLogin || loginMap[u._id.toString()] || null
+    }));
+
+    res.json({ users: enrichedUsers });
   } catch (error) {
     next(error);
   }

@@ -1,5 +1,5 @@
 import { ArrowRight, Cloud, Files, Lock, Mail, ShieldCheck, User as UserIcon, Users } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
 import AppFooter from '../components/AppFooter.jsx';
@@ -7,9 +7,15 @@ import { useAuth } from '../context/AuthContext.jsx';
 
 export default function Auth({ mode }) {
   const isRegister = mode === 'register';
-  const { login, register, loading } = useAuth();
+  const { user, login, register, loading } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: '', email: '', password: '' });
+
+  useEffect(() => {
+    if (user) {
+      navigate('/', { replace: true });
+    }
+  }, [user, navigate]);
 
   async function submit(event) {
     event.preventDefault();
@@ -63,7 +69,7 @@ export default function Auth({ mode }) {
           </section>
 
           <form onSubmit={submit} className="p-6 sm:p-10 lg:p-12">
-            <Link to="/welcome" className="mb-10 inline-flex items-center gap-3">
+            <Link to="/" className="mb-10 inline-flex items-center gap-3">
               <span className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
                 <Cloud size={23} />
               </span>

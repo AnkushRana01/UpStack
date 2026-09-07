@@ -1,4 +1,4 @@
-﻿import mongoose from "mongoose";
+import mongoose from "mongoose";
 
 export async function connectDB() {
   const mongoUri = process.env.MONGO_URI;
@@ -17,8 +17,4 @@ export async function connectDB() {
     console.error("❌ MongoDB Connection Failed:", error.message);
     process.exit(1);
   }
-}
-
-export async function stopMemoryDB() {
-  await mongoose.disconnect();
 }

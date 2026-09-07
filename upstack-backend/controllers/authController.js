@@ -67,6 +67,7 @@ export async function login(req, res, next) {
       throw new Error('Invalid credentials');
     }
 
+    await User.findByIdAndUpdate(user._id, { lastLogin: new Date() });
     await logActivity({ actor: user._id, action: 'USER_LOGIN', targetType: 'user', targetId: user._id, ipAddress: req.ip });
     res.json(authResponse(user));
   } catch (error) {
@@ -80,7 +81,10 @@ export async function me(req, res) {
 
 export async function getActivity(req, res, next) {
   try {
-    const logs = await ActivityLog.find({ actor: req.user._id })
+    const logs = await ActivityLog.find({
+      actor: req.user._id,
+      action: { $in: ['FILE_UPLOADED', 'FOLDER_CREATED'] }
+    })
       .sort({ createdAt: -1 })
       .limit(10)
       .populate('actor', 'name email');

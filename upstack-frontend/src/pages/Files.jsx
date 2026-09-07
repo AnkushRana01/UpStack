@@ -1,19 +1,30 @@
 import { FolderPlus, RefreshCw, Search, ChevronRight, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import FileTable from '../components/FileTable.jsx';
-import FileUploader from '../components/FileUploader.jsx';
 import PageLoader from '../components/PageLoader.jsx';
 import { api } from '../lib/api.js';
 
 export default function Files() {
+  const [searchParams] = useSearchParams();
+  const initialSearch = searchParams.get('search') || '';
+
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [currentFolder, setCurrentFolder] = useState(null); // null is root
   const [folderPath, setFolderPath] = useState([]); // array of { id, name }
-  const [filters, setFilters] = useState({ search: '', type: '', sort: 'createdAt', order: 'desc' });
+  const [filters, setFilters] = useState({ search: initialSearch, type: '', sort: 'createdAt', order: 'desc' });
+
+  // Sync search param from URL if changed by global search
+  useEffect(() => {
+    const urlQuery = searchParams.get('search');
+    if (urlQuery !== null && urlQuery !== filters.search) {
+      setFilters((prev) => ({ ...prev, search: urlQuery }));
+    }
+  }, [searchParams]);
 
   async function loadFiles(isInitial = false) {
     if (isInitial) {
@@ -43,6 +54,12 @@ export default function Files() {
       loadFiles(files.length === 0);
     }, 250);
     return () => clearTimeout(timer);
+  }, [filters, currentFolder]);
+
+  useEffect(() => {
+    const handleRefresh = () => loadFiles(false);
+    window.addEventListener('upstack:refresh-files', handleRefresh);
+    return () => window.removeEventListener('upstack:refresh-files', handleRefresh);
   }, [filters, currentFolder]);
 
   async function createFolder() {
@@ -80,25 +97,49 @@ export default function Files() {
   return (
     <div className="space-y-8">
       
-      {/* Title & Actions Bar */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">Cloud Drive</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-450 mt-1 font-medium">Manage, organize, search, share, and backup files securely.</p>
-        </div>
+      {/* Subheader: Breadcrumbs navigation & Action buttons */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <nav aria-label="Breadcrumb" className="flex items-center flex-wrap gap-1.5 text-xs sm:text-sm font-medium">
+          <button
+            onClick={() => navigateBreadcrumb(-1)}
+            className={`transition hover:text-blue-600 dark:hover:text-blue-400 ${
+              folderPath.length === 0
+                ? 'text-slate-700 dark:text-slate-200 font-semibold'
+                : 'text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            All Files
+          </button>
+          {folderPath.map((folder, index) => (
+            <div key={folder.id} className="flex items-center gap-1.5 text-slate-400">
+              <ChevronRight size={14} />
+              <button
+                onClick={() => navigateBreadcrumb(index)}
+                className={`transition max-w-[180px] truncate ${
+                  index === folderPath.length - 1
+                    ? 'text-blue-600 dark:text-blue-400 font-semibold'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-blue-600 font-medium'
+                }`}
+              >
+                {folder.name}
+              </button>
+            </div>
+          ))}
+        </nav>
+
         <div className="flex items-center gap-2">
           <button 
             disabled={refreshing || loading}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200/80 bg-white px-4 py-2.5 text-xs font-semibold text-slate-650 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-350 dark:hover:bg-slate-800/80 transition disabled:opacity-60 disabled:cursor-not-allowed" 
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200/80 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/80 transition disabled:opacity-60 disabled:cursor-not-allowed shadow-xs" 
             onClick={() => loadFiles(false)}
             title="Refresh files"
           >
-            <RefreshCw size={14} className={refreshing ? 'animate-spin text-cyan-500' : ''} /> 
+            <RefreshCw size={14} className={refreshing ? 'animate-spin text-blue-500' : ''} /> 
             <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
           </button>
           <button 
             disabled={creatingFolder}
-            className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-cyan-500 to-indigo-600 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-cyan-500/10 hover:from-cyan-400 hover:to-indigo-500 transition duration-150 disabled:opacity-60 disabled:cursor-not-allowed" 
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 text-xs font-semibold shadow-xs transition duration-150 disabled:opacity-60 disabled:cursor-not-allowed" 
             onClick={createFolder}
           >
             {creatingFolder ? (
@@ -110,30 +151,6 @@ export default function Files() {
           </button>
         </div>
       </div>
-
-      {/* Drag & Drop Uploader */}
-      <FileUploader folder={currentFolder} onUploaded={loadFiles} />
-
-      {/* Directory Breadcrumbs — only shown when inside a subfolder */}
-      {folderPath.length > 0 && (
-        <div className="flex items-center flex-wrap gap-2 rounded-2xl border border-slate-100 bg-white/70 px-5 py-4 dark:border-slate-800 dark:bg-slate-900/60 text-xs sm:text-sm shadow-sm">
-          {folderPath.map((folder, index) => (
-            <div key={folder.id} className="flex items-center gap-2 text-slate-400">
-              {index > 0 && <ChevronRight size={14} />}
-              <button
-                onClick={() => navigateBreadcrumb(index)}
-                className={`font-bold hover:text-cyan-500 transition max-w-[160px] truncate ${
-                  index === folderPath.length - 1
-                    ? 'text-cyan-500 dark:text-cyan-400'
-                    : 'text-slate-500 dark:text-slate-400'
-                }`}
-              >
-                {folder.name}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Search, Filter & Sorting Panel */}
       <div className="grid gap-3.5 rounded-2xl border border-slate-100 bg-white p-5 dark:border-slate-850 dark:bg-slate-900/60 sm:grid-cols-4 shadow-sm">

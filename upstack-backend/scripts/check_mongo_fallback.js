@@ -1,5 +1,4 @@
 import 'dotenv/config';
-import 'dotenv/config';
 import { exec } from 'child_process';
 import mongoose from 'mongoose';
 

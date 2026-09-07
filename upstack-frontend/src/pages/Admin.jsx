@@ -3,7 +3,6 @@ import {
   FileText,
   HardDrive,
   Loader2,
-  User as UserIcon,
   Users,
   X,
 } from 'lucide-react';
@@ -115,30 +114,31 @@ function RoleTransferModal({ eligibleUsers, onConfirm, onCancel, actionLabel }) 
   );
 }
 
-// ─── Inline Settings panel for Admin users ───────────────────────────────────
-function AdminSettings({ user }) {
-  return (
-    <dl className="grid gap-3 sm:grid-cols-2 text-sm">
-      <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-950/50">
-        <dt className="font-semibold text-slate-500 dark:text-slate-400">Account Holder</dt>
-        <dd className="font-bold text-slate-800 dark:text-slate-200">{user?.name}</dd>
-      </div>
-      <div className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-950/50">
-        <dt className="font-semibold text-slate-500 dark:text-slate-400">Registered Email</dt>
-        <dd className="truncate font-medium text-slate-700 dark:text-slate-300">{user?.email}</dd>
-      </div>
-      <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-950/50">
-        <dt className="font-semibold text-slate-500 dark:text-slate-400">Role</dt>
-        <dd className="rounded-full bg-cyan-50 dark:bg-cyan-950/30 px-2.5 py-0.5 text-xs font-bold text-cyan-700 dark:text-cyan-400 uppercase tracking-wider">
-          {user?.role}
-        </dd>
-      </div>
-      <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-950/50">
-        <dt className="font-semibold text-slate-500 dark:text-slate-400">Storage Used</dt>
-        <dd className="font-bold text-slate-800 dark:text-slate-200">{formatBytes(user?.storageUsed || 0)}</dd>
-      </div>
-    </dl>
-  );
+// ─── Format Last Login Helper ───────────────────────────────────────────────
+function formatLastLogin(dateStr) {
+  if (!dateStr) return 'Never';
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return 'Never';
+
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 60) return `Today ${diffMinutes}m ago`;
+  if (diffHours < 24 && date.getDate() === now.getDate()) {
+    return `Today ${diffHours}h ago`;
+  }
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+  });
 }
 
 // ─── Main Admin Component ────────────────────────────────────────────────────
@@ -362,41 +362,78 @@ export default function Admin() {
       )}
 
       <div className="space-y-8">
-
-        {/* Title */}
+        {/* Heading */}
         <div>
-          <h2 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">Admin Console</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 font-medium">
-            Monitor system-wide cloud utilization and manage user accounts.
+          <h1 className="text-xl sm:text-2xl lg:text-[26px] font-bold tracking-tight text-slate-900 dark:text-white truncate">
+            UpStack Admin Console - {user?.name || 'Admin'} (Admin)
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 font-medium">
+            Organization Overview
           </p>
         </div>
 
-        {/* Metrics — 3 cards */}
+        {/* Metrics Cards matching P2 */}
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="hover-card-trigger">
-            <MetricCard label="Registered Users" value={stats?.users ?? '—'} icon={Users} accent="text-cyan-600 dark:text-cyan-400" />
+            <MetricCard
+              label="Total Users"
+              value={stats?.users ?? '—'}
+              icon={Users}
+              accent="text-blue-600 dark:text-blue-400"
+            />
           </div>
           <div className="hover-card-trigger">
-            <MetricCard label="Cloud Files" value={stats?.files ?? '—'} icon={FileText} accent="text-emerald-600 dark:text-emerald-400" />
+            <MetricCard
+              label="Cloud Files"
+              value={stats?.files ?? '—'}
+              icon={FileText}
+              accent="text-indigo-600 dark:text-indigo-400"
+            />
           </div>
-          <div className="hover-card-trigger">
-            <MetricCard label="Total Storage" value={formatBytes(stats?.storageUsed || 0)} icon={HardDrive} accent="text-amber-600 dark:text-amber-400" />
+
+          {/* Total Organization Storage Card matching P2 */}
+          <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm dark:border-slate-850 dark:bg-slate-900/60 transition-all duration-300 hover:shadow-md hover:scale-[1.01] hover:-translate-y-0.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-450 dark:text-slate-500">
+                  Total Organization Storage
+                </p>
+                <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                  {formatBytes(stats?.storageUsed || 0)}
+                </p>
+              </div>
+              <div className="grid h-12 w-12 place-items-center rounded-xl bg-slate-50 dark:bg-slate-950/80 text-blue-600 dark:text-blue-400 border border-slate-100/50 dark:border-slate-800">
+                <HardDrive size={22} strokeWidth={1.8} />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-1.5">
+                <div
+                  className="h-full bg-blue-600 dark:bg-blue-500 rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(100, Math.max(2, ((stats?.storageUsed || 0) / (stats?.storageLimit || 5 * 1024 * 1024 * 1024)) * 100))}%`
+                  }}
+                />
+              </div>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                {formatBytes(stats?.storageUsed || 0)} / 5 GB
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* User Management */}
+        {/* User Management Section */}
         <section className="rounded-2xl border border-slate-100 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60 shadow-sm">
-          <h3 className="font-bold text-slate-900 dark:text-white text-base mb-6">User Accounts</h3>
+          <h3 className="font-bold text-slate-900 dark:text-white text-base mb-6">User Management</h3>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 border-b border-slate-100 dark:border-slate-800">
                 <tr>
-                  <th className="pb-3 pr-4">Name</th>
+                  <th className="pb-3 pr-4">User</th>
                   <th className="pb-3 pr-4">Email</th>
-                  <th className="pb-3 pr-4">Role</th>
-                  <th className="pb-3 pr-4">Status</th>
-                  {/* Actions: this entire page is already admin-only via backend + UI guard */}
-                  <th className="pb-3 text-right">Actions</th>
+                  <th className="pb-3 pr-4">Permissions</th>
+                  <th className="pb-3 pr-4">Last Login</th>
+                  <th className="pb-3 text-right">Manage</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -408,7 +445,7 @@ export default function Admin() {
                       key={target._id}
                       className={`transition ${isSelf ? 'bg-blue-50/30 dark:bg-blue-950/10' : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/20'}`}
                     >
-                      {/* Name — highlight own row */}
+                      {/* Name / User */}
                       <td className="py-3.5 pr-4">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-slate-800 dark:text-slate-200">{target.name}</span>
@@ -422,37 +459,37 @@ export default function Admin() {
 
                       <td className="py-3.5 pr-4 text-slate-500 dark:text-slate-400 text-xs">{target.email}</td>
 
-                      {/* Role badge */}
+                      {/* Permissions / Role badge */}
                       <td className="py-3.5 pr-4">
                         <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                           target.role === 'admin'
                             ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400'
                             : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
                         }`}>
-                          {target.role}
+                          {target.role === 'admin' ? 'Admin' : 'Basic User'}
                         </span>
                       </td>
 
-                      {/* Status badge */}
-                      <td className="py-3.5 pr-4">
-                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                          target.isActive
-                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400'
-                            : 'bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-400'
-                        }`}>
-                          {target.isActive ? 'Active' : 'Suspended'}
-                        </span>
+                      {/* Last Login */}
+                      <td className="py-3.5 pr-4 text-xs">
+                        {target.lastLogin ? (
+                          <span className="text-slate-600 dark:text-slate-300 font-medium">
+                            {formatLastLogin(target.lastLogin)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-500 italic">
+                            Never
+                          </span>
+                        )}
                       </td>
 
-                      {/* Actions — admin-only page means only admin ever sees these */}
+                      {/* Actions */}
                       <td className="py-3.5 text-right">
                         <div className="inline-flex items-center gap-1">
                           {busy ? (
                             <Loader2 size={16} className="animate-spin text-slate-400" />
                           ) : (
                             <>
-                              {/* Role toggle — visible to admin, hidden from normal users
-                                  (entire page requires admin role) */}
                               <button
                                 title="Toggle role (Admin / User)"
                                 disabled={busy}
@@ -462,7 +499,6 @@ export default function Admin() {
                                 Role
                               </button>
 
-                              {/* Suspend / Activate */}
                               <button
                                 title={target.isActive ? 'Suspend account' : 'Reactivate account'}
                                 disabled={busy}
@@ -490,18 +526,6 @@ export default function Admin() {
             )}
           </div>
         </section>
-
-        {/* Embedded Workspace Settings for admin users */}
-        <section className="rounded-2xl border border-slate-100 bg-white p-6 dark:border-slate-800 dark:bg-slate-900/60 shadow-sm">
-          <div className="flex items-center gap-3 mb-5">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
-              <UserIcon size={17} />
-            </span>
-            <h3 className="font-bold text-slate-900 dark:text-white text-base">Workspace Settings</h3>
-          </div>
-          <AdminSettings user={user} />
-        </section>
-
       </div>
     </>
   );
